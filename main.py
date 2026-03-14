@@ -25,7 +25,7 @@ from bs4 import BeautifulSoup
 # 基本設定
 # =========================
 
-max_api_wait_time = 3
+max_api_wait_time = 9
 max_time = 10
 version = "1.0"
 
@@ -45,6 +45,21 @@ apis = [
     "https://iv.ggtyler.dev/",
     "https://iv.datura.network/",
     "https://yt.cdaut.de/",
+    "https://invidious.flokinet.to/",
+    "https://inv.tux.pizza/",
+    "https://invidious.io.lol/",
+    "https://iv.melmac.space/",
+    "https://invidious.projectsegfau.lt/",
+    "https://invidious.privacydev.net/",
+    "https://invidious.lunar.icu/",
+    "https://yewtu.be/",
+    "https://invidious.perennialte.ch/",
+    "https://iv.nboeck.de/",
+    "https://invidious.jing.rocks/",
+    "https://yt.omada.cafe/",
+    "https://invidious.reallyaweso.me/",
+    "https://iv.nowhere.moe/",
+    "https://iv.ggtyler.dev/",
 ]
 
 apichannels = apis.copy()
