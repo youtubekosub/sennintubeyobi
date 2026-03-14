@@ -16,7 +16,7 @@ except ImportError:
             return f
         return decorator
 
-from flask import Flask, request, response, render_template, redirect, make_response, send_from_directory, abort, Response as FlaskResponse
+from flask import Flask, request, render_template, redirect, make_response, send_from_directory, abort, Response as FlaskResponse
 from flask_compress import Compress
 import httpx
 from bs4 import BeautifulSoup
@@ -69,10 +69,6 @@ class APItimeoutError(Exception):
 
 def check_cookie(cookie_value) -> bool:
     return cookie_value == "True"
-
-def run_async(coro):
-    """Flask(同期)からasync関数を呼び出すためのヘルパー"""
-    return asyncio.run(coro)
 
 # =========================
 # 並列API最速勝ち
@@ -310,7 +306,7 @@ STREAM_API = "https://ytdl-0et1.onrender.com/stream/"
 M3U8_API   = "https://ytdl-0et1.onrender.com/m3u8/"
 
 @app.route("/stream/high")
-def stream_high():
+async def stream_high():
     v = request.args.get("v")
     try:
         return redirect(f"{M3U8_API}{v}")
@@ -322,7 +318,7 @@ def stream_high():
     except:
         pass
 
-    t_str = run_async(apirequest("api/v1/videos/" + urllib.parse.quote(v)))
+    t_str = await apirequest("api/v1/videos/" + urllib.parse.quote(v))
     t = json.loads(t_str)
     if t.get("hlsUrl"):
         return redirect(t["hlsUrl"])
@@ -334,12 +330,12 @@ def stream_high():
 # =========================
 
 @app.route("/")
-def home():
+async def home():
     sennin = request.cookies.get("sennin")
     if not check_cookie(sennin):
         return redirect("/word")
 
-    videos, shorts, channels = run_async(get_home())
+    videos, shorts, channels = await get_home()
 
     resp = make_response(render_template(
         "home.html",
@@ -351,7 +347,7 @@ def home():
     return resp
 
 @app.route("/search")
-def search():
+async def search():
     q = request.args.get("q", "")
     page = int(request.args.get("page", 1))
     sennin = request.cookies.get("sennin")
@@ -359,7 +355,7 @@ def search():
     if not check_cookie(sennin):
         return redirect("/")
     
-    results = run_async(get_search(q, page))
+    results = await get_search(q, page)
     
     resp = make_response(render_template(
         "search.html",
@@ -371,14 +367,14 @@ def search():
     return resp
 
 @app.route("/watch")
-def watch():
+async def watch():
     v = request.args.get("v")
     sennin = request.cookies.get("sennin")
     
     if not check_cookie(sennin):
         return redirect("/")
 
-    data = run_async(get_data(v))
+    data = await get_data(v)
     t = data[10]
 
     if t.get("isShort") is True:
@@ -412,12 +408,12 @@ def watch():
     return resp
 
 @app.route("/channel/<cid>")
-def channel(cid):
+async def channel(cid):
     sennin = request.cookies.get("sennin")
     if not check_cookie(sennin):
         return redirect("/")
 
-    videos, shorts, info = run_async(get_channel(cid))
+    videos, shorts, info = await get_channel(cid)
 
     resp = make_response(render_template(
         "channel.html",
@@ -433,29 +429,24 @@ def channel(cid):
     return resp
 
 @app.route("/subuscript")
-def subuscript():
+async def subuscript():
     sennin = request.cookies.get("sennin")
     if not check_cookie(sennin):
         return redirect("/")
     return render_template("subuscript.html")
 
 @app.route("/comments")
-def comments():
+async def comments():
     v = request.args.get("v")
-    comment_data = run_async(get_comments(v))
+    comment_data = await get_comments(v)
     return render_template("comments.html", comments=comment_data)
 
 @app.route("/thumbnail")
-def thumbnail():
+async def thumbnail():
     v = request.args.get("v")
-    
-    async def fetch_thumb():
-        async with httpx.AsyncClient() as client:
-            r = await client.get(f"https://img.youtube.com/vi/{v}/0.jpg")
-            return r.content
-            
-    content = run_async(fetch_thumb())
-    return FlaskResponse(content, mimetype="image/jpeg")
+    async with httpx.AsyncClient() as client:
+        r = await client.get(f"https://img.youtube.com/vi/{v}/0.jpg")
+    return FlaskResponse(r.content, mimetype="image/jpeg")
 
 # ============================================================
 # ★★★ X (Nitter系) 統合 ★★★
@@ -521,23 +512,16 @@ def parse_x_tweets(html: str, base: str):
 
 @app.route("/api/x/search")
 @cache(seconds=60)
-def x_search_api():
+async def x_search_api():
     q = request.args.get("q", "")
-    async def get_x():
-        html, base = await x_fetch("/search?f=tweets&q=" + urllib.parse.quote(q))
-        return {"query": q, "tweets": parse_x_tweets(html, base)}
-    
-    return run_async(get_x())
+    html, base = await x_fetch("/search?f=tweets&q=" + urllib.parse.quote(q))
+    return {"query": q, "tweets": parse_x_tweets(html, base)}
 
 @app.route("/x/search")
-def x_search_page():
+async def x_search_page():
     q = request.args.get("q", "")
-    # APIルートの関数を内部的に呼ぶ
-    async def get_x():
-        html, base = await x_fetch("/search?f=tweets&q=" + urllib.parse.quote(q))
-        return parse_x_tweets(html, base)
-    
-    tweets = run_async(get_x())
+    html, base = await x_fetch("/search?f=tweets&q=" + urllib.parse.quote(q))
+    tweets = parse_x_tweets(html, base)
     return render_template(
         "x_search.html",
         query=q,
@@ -549,22 +533,18 @@ def x_search_page():
 # ============================================================
 
 @app.route("/x/media")
-def x_media_proxy():
+async def x_media_proxy():
     u = request.args.get("u")
     url = decode_media_url(u)
 
     if not url.startswith("https://"):
         abort(400)
 
-    async def fetch_media():
-        async with httpx.AsyncClient(headers={"User-Agent": "Mozilla/5.0"}, timeout=5) as client:
-            r = await client.get(url)
-            r.raise_for_status()
-            return r.content, r.headers.get("content-type", "application/octet-stream")
+    async with httpx.AsyncClient(headers={"User-Agent": "Mozilla/5.0"}, timeout=5) as client:
+        r = await client.get(url)
+        r.raise_for_status()
 
-    content, mime = run_async(fetch_media())
-    return FlaskResponse(content, mimetype=mime)
+    return FlaskResponse(r.content, mimetype=r.headers.get("content-type", "application/octet-stream"))
 
 if __name__ == "__main__":
-    # Flaskの開発用サーバー。本番環境では Waitress や Gunicorn + Gevent を推奨
     app.run(host="0.0.0.0", port=8000, debug=True)
